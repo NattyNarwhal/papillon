@@ -60,7 +60,7 @@ defmodule Papillon do
 				clientState
 			["SYN", id, genId] ->
 				# genId == 0, sync everything
-				newGenId = hd(Integer.parse(genId)) + 1
+				newGenId = elem(Integer.parse(genId), 0) + 1
 				write_line(client, "SYN #{id} #{newGenId}\r\n")
 				write_line(client, "GTC #{id} #{newGenId} A\r\n")
 				write_line(client, "BLP #{id} #{newGenId} AL\r\n")
