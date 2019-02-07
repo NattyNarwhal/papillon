@@ -1,9 +1,18 @@
 defmodule Papillon do
 	require Logger
+
+	# XXX: Erlang supervision; start new servers with proper linkage
+
+	def accept_ns() do
+		accept_ns(1863) # default msnp port
+	end
+
 	def accept_ns(port) do
 		# using magic names per https://elixir-lang.org/getting-started/mix-otp/task-and-gen-tcp.html
 		# i do wonder about the viability of this though
-		{:ok, socket} = :gen_tcp.listen(port, [:binary, packet: :line, active: false, reuseaddr: true])
+		{:ok, socket} = :gen_tcp.listen(port, [:binary,
+			packet: :line, # XXX: erlang docs are horrible about what these things mean
+			active: false, reuseaddr: true])
 		Logger.info("NS listening")
 		listen_ns(socket)
 	end
@@ -28,9 +37,15 @@ defmodule Papillon do
 		splitLine = String.split(line)
 		# XXX: This loop probably needs rewriting
 		newState = case splitLine do
-			["VER" | _] ->
-				# Naive server sends back what we got
-				write_line(client, line)
+			["VER", id | protocols] ->
+				latestProto = hd(protocols)
+				# XXX: MSNIM 4.6 hangs on SYN if we try to use MSNP7...
+				#write_line(client, "VER #{id} #{latestProto}\r\n")
+				write_line(client, "VER #{id} MSNP6\r\n")
+				clientState
+			["CVR", id | _] ->
+				# Dummy response
+				write_line(client, "CVR #{id} 1.0.0000, 1.0.0000 1.0.0000 about:blank about:blank")
 				clientState
 			["INF", id] ->
 				# We only support MD5 for now
@@ -59,16 +74,19 @@ defmodule Papillon do
 				write_line(client, "LST #{id} #{listType} 0 0 0\r\n")
 				clientState
 			["SYN", id, genId] ->
-				# genId == 0, sync everything
+				# We're supposed to diff the changes per generation (or send all for 0)
 				newGenId = elem(Integer.parse(genId), 0) + 1
+				# Escargot seems to buffer messages, but MSN 3.6 and 4.6 are OK with this?
+				# Is this order sensitive?
 				write_line(client, "SYN #{id} #{newGenId}\r\n")
-				write_line(client, "GTC #{id} #{newGenId} A\r\n")
-				write_line(client, "BLP #{id} #{newGenId} AL\r\n")
-				write_line(client, "LSG #{id} #{newGenId} 0 0 0 Group 0\r\n")
+				write_line(client, "LSG #{id} #{newGenId} 0 0 0 wow 0\r\n")
+				# write_line(client, "LST #{id} FL #{newGenId} 1 1 example@example.com Example user 0\r\n")
 				write_line(client, "LST #{id} FL #{newGenId} 0 0\r\n")
 				write_line(client, "LST #{id} AL #{newGenId} 0 0\r\n")
 				write_line(client, "LST #{id} BL #{newGenId} 0 0\r\n")
 				write_line(client, "LST #{id} RL #{newGenId} 0 0\r\n")
+				write_line(client, "GTC #{id} #{newGenId} A\r\n")
+				write_line(client, "BLP #{id} #{newGenId} AL\r\n")
 				clientState
 			["PNG"] ->
 				write_line(client, "QNG\r\n")
