@@ -20,7 +20,7 @@ defmodule Papillon.NotificationServer do
 	# Notification server
 	defp listen_ns(socket) do
 		{:ok, client} = :gen_tcp.accept(socket)
-		serve_ns(client, %{})
+		pid = spawn(fn -> serve_ns(client, %{}) end)
 		listen_ns(socket)
 	end
 
