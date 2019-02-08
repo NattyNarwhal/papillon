@@ -1,4 +1,4 @@
-defmodule Papillon do
+defmodule Papillon.NotificationServer do
 	require Logger
 
 	# XXX: Erlang supervision; start new servers with proper linkage
@@ -68,10 +68,21 @@ defmodule Papillon do
 				write_line(client, "CHG #{id} #{newStatus}\r\n") # XXX: escargot w/ 3.6 appends a 0 here?
 				# XXX: Actually keep track of state and send the initial ILNs
 				clientState
-			["LST", id, listType] ->
-				# XXX: Actually.... have a list
-				# The format for the numbers is generation of list, current item, count
-				write_line(client, "LST #{id} #{listType} 0 0 0\r\n")
+			["LSG", id] ->
+				send_groups(client, id, 0, Map.get(clientState, :passport))
+				clientState
+			["LST", id, "FL"] ->
+				# XXX: better way for generation ID stuff?
+				send_forward_list(client, id, 0, Map.get(clientState, :passport))
+				clientState
+			["LST", id, "RL"] ->
+				send_reverse_list(client, id, 0, Map.get(clientState, :passport))
+				clientState
+			["LST", id, "AL"] ->
+				send_allow_list(client, id, 0, Map.get(clientState, :passport))
+				clientState
+			["LST", id, "BL"] ->
+				send_block_list(client, id, 0, Map.get(clientState, :passport))
 				clientState
 			["SYN", id, genId] ->
 				# We're supposed to diff the changes per generation (or send all for 0)
@@ -79,24 +90,50 @@ defmodule Papillon do
 				# Escargot seems to buffer messages, but MSN 3.6 and 4.6 are OK with this?
 				# Is this order sensitive?
 				write_line(client, "SYN #{id} #{newGenId}\r\n")
-				write_line(client, "LSG #{id} #{newGenId} 0 0 0 wow 0\r\n")
-				# write_line(client, "LST #{id} FL #{newGenId} 1 1 example@example.com Example user 0\r\n")
-				write_line(client, "LST #{id} FL #{newGenId} 0 0\r\n")
-				write_line(client, "LST #{id} AL #{newGenId} 0 0\r\n")
-				write_line(client, "LST #{id} BL #{newGenId} 0 0\r\n")
-				write_line(client, "LST #{id} RL #{newGenId} 0 0\r\n")
+				send_groups(client, id, newGenId, Map.get(clientState, :passport))
+				send_forward_list(client, id, newGenId, Map.get(clientState, :passport))
+				send_allow_list(client, id, newGenId, Map.get(clientState, :passport))
+				send_block_list(client, id, newGenId, Map.get(clientState, :passport))
+				send_reverse_list(client, id, newGenId, Map.get(clientState, :passport))
 				write_line(client, "GTC #{id} #{newGenId} A\r\n")
 				write_line(client, "BLP #{id} #{newGenId} AL\r\n")
 				clientState
 			["PNG"] ->
 				write_line(client, "QNG\r\n")
 				clientState
-			_ ->
-				write_line(client, "500\r\n")
+			[_, id] ->
+				write_line(client, "500 #{id}\r\n")
+				clientState
+			[_, id | _] ->
+				write_line(client, "500 #{id}\r\n")
 				clientState
 		end
 		# nothing is implemented, haha
 		serve_ns(client, newState)
+	end
+
+	# XXX: Actually.... have a list
+	# The format for the numbers is generation of list, current item, count
+	defp send_groups(client, seqId, genId, passport) do
+		# TODO: Actually.... return valid data
+		write_line(client, "LSG #{seqId} #{genId} 0 0 0 wow 0\r\n")
+	end
+
+	defp send_forward_list(client, seqId, genId, passport) do
+		# write_line(client, "LST #{seqIdid} FL #{newGenId} 1 1 example@example.com Example user 0\r\n")
+		write_line(client, "LST #{seqId} FL #{genId} 0 0\r\n")
+	end
+
+	defp send_allow_list(client, seqId, genId, passport) do
+		write_line(client, "LST #{seqId} AL #{genId} 0 0\r\n")
+	end
+
+	defp send_block_list(client, seqId, genId, passport) do
+		write_line(client, "LST #{seqId} BL #{genId} 0 0\r\n")
+	end
+
+	defp send_reverse_list(client, seqId, genId, passport) do
+		write_line(client, "LST #{seqId} RL #{genId} 0 0\r\n")
 	end
 
 	defp read_line (client) do
